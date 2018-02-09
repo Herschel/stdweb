@@ -4,9 +4,8 @@ use webcore::unsafe_typed_array::UnsafeTypedArray;
 use webapi::event_target::{IEventTarget, EventTarget};
 use webapi::blob::Blob;
 use webapi::array_buffer::ArrayBuffer;
-
-use std::error;
-use std::fmt;
+use webapi::dom_exception::{InvalidAccessError, SecurityError, SyntaxError};
+use private::UnimplementedException;
 
 /// Wrapper type around a CloseEvent code, indicating why the WebSocket was closed
 ///
@@ -65,10 +64,8 @@ newtype_enum!(SocketCloseCode {
 /// server, as well as for sending and receiving data on the connection.
 ///
 /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+// https://html.spec.whatwg.org/#websocket
 pub struct WebSocket( Reference );
-
-// WebSocket specification:
-// https://html.spec.whatwg.org/multipage/web-sockets.html#the-websocket-interface
 
 impl IEventTarget for WebSocket {}
 
@@ -78,6 +75,7 @@ reference_boilerplate! {
     convertible to EventTarget
 }
 
+// https://html.spec.whatwg.org/#dom-websocket-binarytype
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinaryType {
     Blob,
@@ -103,6 +101,7 @@ impl BinaryType {
 /// A number indicating the state of the `WebSocket`.
 ///
 /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket#Ready_state_constants)
+// https://html.spec.whatwg.org/#dom-websocket-readystate
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SocketReadyState {
     Connecting = 0,
@@ -126,58 +125,32 @@ impl TryFrom<Value> for SocketReadyState {
     }
 }
 
-/// A DOMException
-#[derive(Debug)]
-pub struct DomException;
-impl error::Error for DomException {
-    fn description( &self ) -> &str {
-        "DomException"
-    }
-}
-
-impl fmt::Display for DomException {
-    fn fmt( &self, formatter: &mut fmt::Formatter ) -> fmt::Result {
-        write!( formatter, "DomException" )
-    }
-}
-
 impl WebSocket {
     /// Returns a newly constructed `WebSocket`.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
-    pub fn new(url: &str) -> Result<WebSocket, DomException> {
-        js!(
-            try {
-                return new WebSocket(@{url});
-            } catch (error) {
-                if (error instanceof DOMException) {
-                    return null;
-                }
-                throw error;
-            }
-        ).try_into().map_err(|_| DomException)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket
+    pub fn new(url: &str) -> Result<WebSocket, CreationError> {
+        js_try!(
+            return new WebSocket(@{url});
+        ).unwrap()
     }
 
     /// Returns a newly constructed `WebSocket`.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
-    pub fn new_with_protocols(url: &str, protocols: &[&str]) -> Result<WebSocket, DomException> {
-        js!(
-            try {
-                return new WebSocket(@{url}, @{protocols});
-            } catch (error) {
-                if (error instanceof DOMException) {
-                    return null;
-                }
-                throw error;
-            }
-        ).try_into().map_err(|_| DomException)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket
+    pub fn new_with_protocols(url: &str, protocols: &[&str]) -> Result<WebSocket, CreationError> {
+        js_try!(
+            return new WebSocket(@{url}, @{protocols});
+        ).unwrap()
     }
 
     /// Returns the binary type of the web socket. Only affects received messages.
     /// The default binary type is `Blob`.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-binarytype
     pub fn binary_type(&self) -> BinaryType {
         let binary_type: String = js!( return @{self}.binaryType; ).try_into().unwrap();
         BinaryType::from_str(&binary_type)
@@ -187,6 +160,7 @@ impl WebSocket {
     /// The default binary type is `Blob`.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-binarytype
     pub fn set_binary_type(&self, binary_type: BinaryType) {
         js!( @(no_return) @{self}.binaryType = @{binary_type.to_str()}; );
     }
@@ -194,9 +168,10 @@ impl WebSocket {
     /// Returns the number of bytes of data that have been queued using calls to send()
     /// but not yet transmitted to the network. This value resets to zero once all queued
     /// data has been sent. This value does not reset to zero when the connection is closed;
-    /// if you keep calling send(), this will continue to climb. 
+    /// if you keep calling send(), this will continue to climb.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-bufferedamount
     pub fn buffered_amount(&self) -> u64 {
         js!( return @{self}.bufferedAmount; ).try_into().unwrap()
     }
@@ -205,6 +180,7 @@ impl WebSocket {
     /// string or a list of extensions as negotiated by the connection.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-extensions
     pub fn extensions(&self) -> String {
         js!( return @{self}.extensions; ).try_into().unwrap()
     }
@@ -214,6 +190,7 @@ impl WebSocket {
     /// creating the WebSocket object.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-protocol
     pub fn protocol(&self) -> String {
         js!( return @{self}.protocol; ).try_into().unwrap()
     }
@@ -221,6 +198,7 @@ impl WebSocket {
     /// Returns the current state of the connection.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-readystate
     pub fn ready_state(&self) -> SocketReadyState {
         js!( return @{self}.protocol; ).try_into().unwrap()
     }
@@ -228,6 +206,7 @@ impl WebSocket {
     /// Returns the URL as resolved by the constructor. This is always an absolute URL.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-url
     pub fn url(&self) -> String {
         js!( return @{self}.url; ).try_into().unwrap()
     }
@@ -236,6 +215,7 @@ impl WebSocket {
     /// is already CLOSED, this method does nothing.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket#close())
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-close
     pub fn close(&self) {
         js!( @(no_return) @{self}.close(); );
     }
@@ -244,56 +224,64 @@ impl WebSocket {
     /// is already CLOSED, this method does nothing.
     ///
     /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket#close())
-    pub fn close_with_status(&self, code: SocketCloseCode, reason: &str) -> Result<(), DomException> {
-        let code = code.0;
-        if js!(
-            try {
-                @{self}.close(@{code}, @{reason});
-                return true;
-            } catch (error) {
-                if (error instanceof DOMException) {
-                    return false;
-                }
-                throw error;
-            }
-        ).try_into().unwrap() {
-            Ok(())
-        } else {
-            Err(DomException)
-        }
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-close
+    pub fn close_with_status(&self, code: SocketCloseCode, reason: &str) -> Result<(), CloseError> {
+        js_try!( @(no_return)
+            @{self}.close(@{code.0}, @{reason});
+        ).unwrap()
     }
 
     /// Enqueues the specified data to be transmitted to the server over the WebSocket
     /// connection, increasing the value of bufferedAmount by the number of bytes needed
     /// to contain the data. If the data can't be sent (for example, because it needs to
     /// be buffered but the buffer is full), the socket is closed automatically.
-    pub fn send_text(&self, text: &str) {
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-send
+    pub fn send_text(&self, text: &str) -> Result< (), UnimplementedException > {
         js!( @(no_return) @{self}.send(@{text}); );
+        Ok(())
     }
 
     /// Enqueues the specified data to be transmitted to the server over the WebSocket
     /// connection, increasing the value of bufferedAmount by the number of bytes needed
     /// to contain the data. If the data can't be sent (for example, because it needs to
     /// be buffered but the buffer is full), the socket is closed automatically.
-    pub fn send_blob(&self, blob: &Blob) {
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-send
+    pub fn send_blob(&self, blob: &Blob) -> Result< (), UnimplementedException > {
         js!( @(no_return) @{self}.send(@{blob}); );
+        Ok(())
     }
 
     /// Enqueues the specified data to be transmitted to the server over the WebSocket
     /// connection, increasing the value of bufferedAmount by the number of bytes needed
     /// to contain the data. If the data can't be sent (for example, because it needs to
     /// be buffered but the buffer is full), the socket is closed automatically.
-    pub fn send_array_buffer(&self, array_buffer: &ArrayBuffer) {
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-send
+    pub fn send_array_buffer(&self, array_buffer: &ArrayBuffer) -> Result< (), UnimplementedException > {
         js!( @(no_return) @{self}.send(@{array_buffer}); );
+        Ok(())
     }
 
     /// Enqueues the specified data to be transmitted to the server over the WebSocket
     /// connection, increasing the value of bufferedAmount by the number of bytes needed
     /// to contain the data. If the data can't be sent (for example, because it needs to
     /// be buffered but the buffer is full), the socket is closed automatically.
-    pub fn send_bytes(&self, bytes: &[u8]) {
+    // https://html.spec.whatwg.org/#the-websocket-interface:dom-websocket-send
+    pub fn send_bytes(&self, bytes: &[u8]) -> Result< (), UnimplementedException > {
         js!( @(no_return) @{self}.send(@{ UnsafeTypedArray(bytes) }); );
+        Ok(())
     }
+}
+
+/// Errors thrown by `WebSocket::new`.
+error_enum_boilerplate! {
+    CreationError,
+    SecurityError, SyntaxError
+}
+
+/// Errors thrown by `WebSocket::close_with_status`.
+error_enum_boilerplate! {
+    CloseError,
+    InvalidAccessError, SyntaxError
 }
 
 #[cfg(test)]
@@ -306,5 +294,44 @@ mod tests {
         assert_eq!(&format!("{:?}", SocketCloseCode::GOING_AWAY), "SocketCloseCode::GOING_AWAY");
         assert_eq!(&format!("{:?}", SocketCloseCode(1000)), "SocketCloseCode::NORMAL_CLOSURE");
         assert_eq!(&format!("{:?}", SocketCloseCode(3001)), "SocketCloseCode(3001)");
+    }
+}
+
+#[cfg(all(test, feature = "web_test"))]
+mod web_tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        assert!(WebSocket::new("ws://localhost").is_ok());
+
+        match WebSocket::new("bad url") {
+            Err(CreationError::SyntaxError(_)) => (),
+            v => panic!("expected SyntaxError, got {:?}", v),
+        }
+    }
+
+    #[test]
+    fn test_close() {
+        let socket = WebSocket::new("ws://localhost").unwrap();
+
+        socket.close();
+
+        assert!(socket.close_with_status( SocketCloseCode::NORMAL_CLOSURE, "closed" ).is_ok());
+
+        // Invalid close code
+        match socket.close_with_status( SocketCloseCode(12345), "closed" ) {
+            Err(CloseError::InvalidAccessError(_)) => (),
+            v => panic!("expected InvalidAccessError, got {:?}", v),
+        }
+
+        // Close reason too long (>123 bytes according to spec)
+        match socket.close_with_status(
+            SocketCloseCode::NORMAL_CLOSURE,
+            &(0..200).map(|_| "X").collect::<String>()
+        ) {
+            Err(CloseError::SyntaxError(_)) => (),
+            v => panic!("expected SyntaxError, got {:?}", v),
+        }
     }
 }

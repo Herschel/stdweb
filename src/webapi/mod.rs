@@ -27,3 +27,8 @@ pub mod xml_http_request;
 pub mod history;
 pub mod web_socket;
 pub mod rendering_context;
+pub mod mutation_observer;
+pub mod error;
+pub mod dom_exception;
+pub mod events;
+pub mod parent_node;
